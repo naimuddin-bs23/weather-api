@@ -324,7 +324,7 @@ MIT License - See LICENSE file for details
 
 ## 👨‍💻 Author
 
-**naimuddin-bs23** - DevOps Task Implementation
+**Naimuddin Shahjalal Bhuyan** - DevOps Task Implementation
 
 ---
 
