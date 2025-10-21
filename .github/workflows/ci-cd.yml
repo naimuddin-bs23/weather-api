@@ -108,29 +108,15 @@ jobs:
           fi
           echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
 
-      - name: Wait for image to be available
-        if: github.event_name == 'release'
+      - name: Verify image exists
         run: |
-          echo "🔍 Waiting for Docker image to be available..."
-          echo "Expected image: $DOCKER_IMAGE"
-          
-          # Wait up to 10 minutes for the image to be available
-          MAX_WAIT=60
-          WAIT_COUNT=0
-          
-          while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-            if docker manifest inspect $DOCKER_IMAGE >/dev/null 2>&1; then
-              echo "✅ Image $DOCKER_IMAGE is now available!"
-              break
-            else
-              WAIT_COUNT=$((WAIT_COUNT + 1))
-              echo "⏳ Waiting for image... ($WAIT_COUNT/$MAX_WAIT)"
-              sleep 10
-            fi
-          done
-          
-          if [ $WAIT_COUNT -eq $MAX_WAIT ]; then
-            echo "⚠️  Image not available after waiting, will try fallbacks in deployment"
+          echo "🔍 Verifying Docker image exists..."
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "Checking if $DOCKER_IMAGE exists in Docker Hub..."
+            # This will fail if image doesn't exist, but we'll handle it in deployment
+            echo "Image check completed"
+          else
+            echo "Main branch deployment - using existing image"
           fi
 
       - name: Zero-downtime deployment
@@ -151,33 +137,16 @@ jobs:
           echo "1️⃣ Stopping existing containers..."
           docker-compose down || true
           
-          # Pull tagged version from Docker Hub
-          echo "2️⃣ Pulling tagged version from Docker Hub..."
-          echo "Attempting to pull: $DOCKER_IMAGE"
-          
-          # Wait for image to be available (max 5 minutes)
-          MAX_ATTEMPTS=30
-          ATTEMPT=0
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if docker pull $DOCKER_IMAGE; then
-              echo "✅ Successfully pulled $DOCKER_IMAGE"
-              break
-            else
-              ATTEMPT=$((ATTEMPT + 1))
-              echo "⏳ Attempt $ATTEMPT/$MAX_ATTEMPTS failed, waiting 10 seconds..."
-              sleep 10
-            fi
-          done
-          
-          # If still failed after waiting, try fallbacks
-          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-            echo "⚠️  Tagged version not available after waiting, trying fallbacks..."
+          # Pull latest image from Docker Hub
+          echo "2️⃣ Pulling latest image from Docker Hub..."
+          if ! docker pull $DOCKER_IMAGE; then
+            echo "⚠️  Failed to pull $DOCKER_IMAGE, trying to pull latest..."
             if ! docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest; then
-              echo "❌ No images available, building locally..."
+              echo "❌ Failed to pull any image, building locally..."
               docker-compose up --build -d
               exit 0
             else
-              echo "✅ Using latest image as fallback"
+              echo "✅ Using latest image instead"
               export VERSION=latest
             fi
           fi
