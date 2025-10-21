@@ -3,10 +3,6 @@ name: CI/CD Pipeline
 on:
   release:
     types: [published]
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
 
 env:
   REGISTRY: docker.io
@@ -48,7 +44,7 @@ jobs:
   Build_And_Push:
     needs: Test
     runs-on: [self-hosted, linux, x64]
-    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'release'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -89,7 +85,7 @@ jobs:
   Deploy:
     needs: Build_And_Push
     runs-on: [self-hosted, linux, x64]
-    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'release'
     environment: production
     steps:
       - name: Checkout code
