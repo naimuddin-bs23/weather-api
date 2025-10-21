@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: naimuddin-bs23/weather-api
+  IMAGE_NAME: naimjeem/weather-api
 
 jobs:
   test:
