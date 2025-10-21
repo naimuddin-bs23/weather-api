@@ -97,8 +97,15 @@ jobs:
 
       - name: Setup deployment environment
         run: |
-          echo "RELEASE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "DOCKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "RELEASE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+            echo "DOCKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+            echo "DEPLOY_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          else
+            echo "RELEASE_VERSION=main-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+            echo "DOCKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main" >> $GITHUB_ENV
+            echo "DEPLOY_TAG=main" >> $GITHUB_ENV
+          fi
           echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
 
       - name: Zero-downtime deployment
@@ -111,7 +118,7 @@ jobs:
           # Self-hosted deployment using Docker Compose
           echo "📋 Deploying with Docker Compose..."
           export IMAGE_NAME=${{ env.IMAGE_NAME }}
-          export VERSION=$RELEASE_VERSION
+          export VERSION=$DEPLOY_TAG
           export WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }}
           export NODE_ENV=production
           
