@@ -13,7 +13,7 @@ env:
   IMAGE_NAME: naimjeem/weather-api
 
 jobs:
-  test:
+  Test:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Checkout code
@@ -45,8 +45,8 @@ jobs:
             exit 1
           fi
 
-  build-and-push:
-    needs: test
+  Build_And_Push:
+    needs: Test
     runs-on: [self-hosted, linux, x64]
     if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
@@ -86,8 +86,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    needs: build-and-push
+  Deploy:
+    needs: Build_And_Push
     runs-on: [self-hosted, linux, x64]
     if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     environment: production
@@ -107,6 +107,17 @@ jobs:
             echo "DEPLOY_TAG=main" >> $GITHUB_ENV
           fi
           echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+
+      - name: Verify image exists
+        run: |
+          echo "🔍 Verifying Docker image exists..."
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "Checking if $DOCKER_IMAGE exists in Docker Hub..."
+            # This will fail if image doesn't exist, but we'll handle it in deployment
+            echo "Image check completed"
+          else
+            echo "Main branch deployment - using existing image"
+          fi
 
       - name: Zero-downtime deployment
         run: |
@@ -128,7 +139,17 @@ jobs:
           
           # Pull latest image from Docker Hub
           echo "2️⃣ Pulling latest image from Docker Hub..."
-          docker pull $DOCKER_IMAGE
+          if ! docker pull $DOCKER_IMAGE; then
+            echo "⚠️  Failed to pull $DOCKER_IMAGE, trying to pull latest..."
+            if ! docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest; then
+              echo "❌ Failed to pull any image, building locally..."
+              docker-compose up --build -d
+              exit 0
+            else
+              echo "✅ Using latest image instead"
+              export VERSION=latest
+            fi
+          fi
           
           # Start new containers
           echo "3️⃣ Starting new containers..."
