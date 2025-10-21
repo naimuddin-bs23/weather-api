@@ -3,9 +3,7 @@ version: '3.8'
 services:
   # Main API service
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${IMAGE_NAME:-naimuddin-bs23/weather-api}:${VERSION:-latest}
     ports:
       - "${PORT:-3000}:3000"
     environment:
