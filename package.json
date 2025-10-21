@@ -1,6 +1,6 @@
 {
   "name": "weather-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "REST API for DevOps task with weather integration",
   "main": "server.js",
   "repository": {
