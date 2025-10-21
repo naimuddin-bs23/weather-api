@@ -48,7 +48,7 @@ jobs:
   build-and-push:
     needs: test
     runs-on: [self-hosted, linux, x64]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -89,7 +89,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: [self-hosted, linux, x64]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     environment: production
     steps:
       - name: Checkout code
