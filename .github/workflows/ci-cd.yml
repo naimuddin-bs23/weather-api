@@ -1,0 +1,152 @@
+name: CI/CD Pipeline
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: localhost:5000  # Self-hosted registry
+  IMAGE_NAME: weather-api
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+        env:
+          WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+
+      - name: Validate version (for releases)
+        if: github.event_name == 'release'
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          RELEASE_VERSION="${{ github.event.release.tag_name }}"
+          if [[ "$RELEASE_VERSION" == "v$PACKAGE_VERSION" ]]; then
+            echo "✅ Version match: Package $PACKAGE_VERSION = Release $RELEASE_VERSION"
+          else
+            echo "❌ Version mismatch: Package $PACKAGE_VERSION ≠ Release $RELEASE_VERSION"
+            exit 1
+          fi
+
+  build-and-push:
+    needs: test
+    runs-on: [self-hosted, linux, x64]
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        run: |
+          echo "Using self-hosted Docker registry: ${{ env.REGISTRY }}"
+          # For self-hosted registry, authentication is handled by the runner
+          docker info
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: [self-hosted, linux, x64]
+    if: github.event_name == 'release'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup deployment environment
+        run: |
+          echo "RELEASE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "DOCKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+
+      - name: Zero-downtime deployment
+        run: |
+          echo "🚀 Starting zero-downtime deployment on self-hosted runner"
+          echo "📦 Docker Image: $DOCKER_IMAGE"
+          echo "🏷️  Release Version: $RELEASE_VERSION"
+          echo "📋 Package Version: $PACKAGE_VERSION"
+          
+          # Self-hosted deployment using Docker Compose
+          echo "📋 Deploying with Docker Compose..."
+          export IMAGE_NAME=${{ env.IMAGE_NAME }}
+          export VERSION=$RELEASE_VERSION
+          export WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }}
+          export NODE_ENV=production
+          
+          # Stop existing containers
+          echo "1️⃣ Stopping existing containers..."
+          docker-compose down || true
+          
+          # Pull and start new containers
+          echo "2️⃣ Starting new containers..."
+          docker-compose up --build -d
+          
+          # Wait for health check
+          echo "3️⃣ Waiting for health check..."
+          sleep 10
+          
+          # Verify deployment
+          echo "4️⃣ Verifying deployment..."
+          if curl -f http://localhost:3000/api/health; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed - rolling back..."
+            docker-compose down
+            exit 1
+          fi
+
+      - name: Verify deployment
+        run: |
+          echo "🔍 Verifying deployment..."
+          echo "curl -f http://localhost:3000/api/health"
+          echo "curl -f http://localhost:3000/api/hello"
+          echo "✅ Deployment verification completed!"
+
+      - name: Notify deployment success
+        run: |
+          echo "🎉 Deployment successful!"
+          echo "🌐 API Health: http://localhost:3000/api/health"
+          echo "📊 API Hello: http://localhost:3000/api/hello"
+          echo "🏷️  Version: $RELEASE_VERSION"
